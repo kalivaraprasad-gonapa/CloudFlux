@@ -44,6 +44,9 @@ export const config = {
 const multipartUploads = {};
 const gcpWriteStreams = {};
 
+// Store cancelled upload file IDs
+const cancelledUploads = new Set();
+
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ message: 'Method not allowed' });
@@ -62,10 +65,22 @@ export default async function handler(req, res) {
             fileKey
         } = req.body;
 
+        // Check if this upload was previously cancelled
+        if (action !== 'abort' && cancelledUploads.has(fileId)) {
+            return res.status(409).json({
+                success: false,
+                error: 'Upload was cancelled',
+                cancelled: true
+            });
+        }
+
         // Initialize upload process
         if (action === 'initialize') {
+            // If this file was previously cancelled, remove it from cancelled list
+            cancelledUploads.delete(fileId);
+            
             const generatedFileKey = generateFileKey(fileName);
-
+            
             if (cloudProvider === 'aws') {
                 const s3Client = getStorageClient();
                 const command = new CreateMultipartUploadCommand({
@@ -73,14 +88,12 @@ export default async function handler(req, res) {
                     Key: generatedFileKey,
                     ContentType: fileType
                 });
-
                 const response = await s3Client.send(command);
                 multipartUploads[fileId] = {
                     uploadId: response.UploadId,
                     parts: [],
                     fileKey: generatedFileKey
                 };
-
                 return res.status(200).json({
                     success: true,
                     uploadId: response.UploadId,
@@ -90,31 +103,35 @@ export default async function handler(req, res) {
                 const storage = getStorageClient();
                 const bucket = storage.bucket(bucketName);
                 const file = bucket.file(generatedFileKey);
-
                 const writeStream = file.createWriteStream({
                     resumable: true,
                     metadata: {
                         contentType: fileType
                     }
                 });
-
                 // Store the write stream for this file ID
                 gcpWriteStreams[fileId] = {
                     writeStream,
                     fileKey: generatedFileKey
                 };
-
                 return res.status(200).json({
                     success: true,
                     fileKey: generatedFileKey
                 });
             }
         }
-
+        // Check upload status
+        else if (action === 'status') {
+            const isCancelled = cancelledUploads.has(fileId);
+            return res.status(200).json({
+                success: true,
+                cancelled: isCancelled
+            });
+        }
         // Upload a chunk
         else if (action === 'upload') {
             const buffer = Buffer.from(chunkData, 'base64');
-
+            
             if (cloudProvider === 'aws') {
                 if (!multipartUploads[fileId]) {
                     return res.status(400).json({
@@ -122,10 +139,9 @@ export default async function handler(req, res) {
                         error: 'Upload session not found'
                     });
                 }
-
+                
                 const s3Client = getStorageClient();
                 const partNumber = parseInt(currentChunk) + 1; // S3 parts start from 1
-
                 const command = new UploadPartCommand({
                     Bucket: bucketName,
                     Key: fileKey,
@@ -133,15 +149,14 @@ export default async function handler(req, res) {
                     UploadId: uploadId,
                     Body: buffer
                 });
-
                 const response = await s3Client.send(command);
-
+                
                 // Store the ETag for this part
                 multipartUploads[fileId].parts.push({
                     PartNumber: partNumber,
                     ETag: response.ETag
                 });
-
+                
                 return res.status(200).json({
                     success: true,
                     partNumber,
@@ -154,7 +169,7 @@ export default async function handler(req, res) {
                         error: 'Upload session not found'
                     });
                 }
-
+                
                 // Write the chunk to the GCP stream
                 await new Promise((resolve, reject) => {
                     gcpWriteStreams[fileId].writeStream.write(buffer, err => {
@@ -162,14 +177,13 @@ export default async function handler(req, res) {
                         resolve();
                     });
                 });
-
+                
                 return res.status(200).json({
                     success: true,
                     chunkReceived: currentChunk,
                 });
             }
         }
-
         // Complete upload
         else if (action === 'complete') {
             if (cloudProvider === 'aws') {
@@ -179,27 +193,26 @@ export default async function handler(req, res) {
                         error: 'Upload session not found'
                     });
                 }
-
+                
                 const s3Client = getStorageClient();
                 const { parts, fileKey, uploadId } = multipartUploads[fileId];
-
+                
                 // Order parts by part number
                 parts.sort((a, b) => a.PartNumber - b.PartNumber);
-
+                
                 const command = new CompleteMultipartUploadCommand({
                     Bucket: bucketName,
                     Key: fileKey,
                     UploadId: uploadId,
                     MultipartUpload: { Parts: parts }
                 });
-
+                
                 await s3Client.send(command);
-
+                
                 // Clean up
                 delete multipartUploads[fileId];
-
+                
                 const fileUrl = getFileUrl(fileKey);
-
                 return res.status(200).json({
                     success: true,
                     key: fileKey,
@@ -212,7 +225,7 @@ export default async function handler(req, res) {
                         error: 'Upload session not found'
                     });
                 }
-
+                
                 // End the write stream
                 await new Promise((resolve, reject) => {
                     gcpWriteStreams[fileId].writeStream.end(err => {
@@ -220,13 +233,13 @@ export default async function handler(req, res) {
                         else resolve();
                     });
                 });
-
+                
                 const fileKey = gcpWriteStreams[fileId].fileKey;
                 const fileUrl = getFileUrl(fileKey);
-
+                
                 // Clean up
                 delete gcpWriteStreams[fileId];
-
+                
                 return res.status(200).json({
                     success: true,
                     key: fileKey,
@@ -234,71 +247,78 @@ export default async function handler(req, res) {
                 });
             }
         }
-
         // Abort upload
         else if (action === 'abort') {
+            // Mark this upload as cancelled
+            cancelledUploads.add(fileId);
+            
             if (cloudProvider === 'aws') {
                 if (!multipartUploads[fileId]) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'Upload session not found'
+                    // Still return success if the upload wasn't found
+                    return res.status(200).json({
+                        success: true,
+                        message: 'Upload marked as cancelled'
                     });
                 }
-
+                
                 const s3Client = getStorageClient();
                 const { fileKey, uploadId } = multipartUploads[fileId];
-
+                
                 const command = new AbortMultipartUploadCommand({
                     Bucket: bucketName,
                     Key: fileKey,
                     UploadId: uploadId
                 });
-
+                
                 await s3Client.send(command);
-
+                
                 // Clean up
                 delete multipartUploads[fileId];
-
+                
                 return res.status(200).json({
                     success: true,
                     message: 'Upload aborted'
                 });
             } else if (cloudProvider === 'gcp') {
                 if (!gcpWriteStreams[fileId]) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'Upload session not found'
+                    // Still return success if the upload wasn't found
+                    return res.status(200).json({
+                        success: true,
+                        message: 'Upload marked as cancelled'
                     });
                 }
-
+                
                 // Destroy the write stream
                 gcpWriteStreams[fileId].writeStream.destroy();
-
+                
                 // Delete the incomplete file
                 const storage = getStorageClient();
                 const bucket = storage.bucket(bucketName);
                 const fileKey = gcpWriteStreams[fileId].fileKey;
-
-                await bucket.file(fileKey).delete();
-
+                
+                try {
+                    await bucket.file(fileKey).delete();
+                } catch (deleteError) {
+                    console.warn('Error deleting incomplete file:', deleteError);
+                    // Continue even if delete fails
+                }
+                
                 // Clean up
                 delete gcpWriteStreams[fileId];
-
+                
                 return res.status(200).json({
                     success: true,
                     message: 'Upload aborted'
                 });
             }
         }
-
+        
         return res.status(400).json({
             success: false,
             error: 'Invalid action'
         });
-
     } catch (error) {
         console.error('Upload error:', error);
-
         return res.status(500).json({
             success: false,
             error: error.message || 'Internal server error'
@@ -313,13 +333,13 @@ function generateFileKey(fileName) {
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
-
+    
     // Clean the file name
     const cleanName = fileName.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '-');
-
+    
     // Add unique ID to prevent overwriting
     const uniqueId = require('crypto').randomBytes(4).toString('hex');
-
+    
     return `uploads/${year}/${month}/${day}/${uniqueId}-${cleanName}`;
 }
 

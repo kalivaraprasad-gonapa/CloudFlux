@@ -141,158 +141,8 @@ export const UploaderProvider = ({ children }) => {
   }, []);
 
   // Start uploading files
-  // const startUpload = useCallback(async () => {
-  //   if (selectedFiles.length === 0 || isUploading) return;
-
-  //   setIsUploading(true);
-
-  //   // Filter out files that are already uploaded or being uploaded
-  //   const filesToUpload = selectedFiles.filter(
-  //     file => ![FILE_STATUS.COMPLETED, FILE_STATUS.UPLOADING].includes(file.status)
-  //   );
-
-  //   if (filesToUpload.length === 0) {
-  //     setIsUploading(false);
-  //     return;
-  //   }
-
-  //   // Add to upload queue in database for persistence
-  //   await uploadQueueService.addToQueue(
-  //     filesToUpload.map(({ name, size, type, id }) => ({
-  //       fileName: name,
-  //       fileSize: size,
-  //       fileType: type,
-  //       fileId: id
-  //     }))
-  //   );
-
-  //   // Process files in batches based on concurrency
-  //   let currentBatch = 0;
-  //   const totalBatches = Math.ceil(filesToUpload.length / uploadConcurrency);
-
-  //   const uploadBatch = async () => {
-  //     const startIdx = currentBatch * uploadConcurrency;
-  //     const endIdx = Math.min(startIdx + uploadConcurrency, filesToUpload.length);
-  //     const currentFiles = filesToUpload.slice(startIdx, endIdx);
-
-  //     if (currentFiles.length === 0) {
-  //       // We're done with all batches
-  //       setIsUploading(false);
-  //       return;
-  //     }
-
-  //     // Process files in current batch in parallel
-  //     await Promise.allSettled(
-  //       currentFiles.map(async (file) => {
-  //         try {
-  //           // Update file status to uploading
-  //           updateFileStatus(file.id, FILE_STATUS.UPLOADING, 0);
-  //           await uploadQueueService.updateStatus(file.id, FILE_STATUS.UPLOADING);
-
-  //           // Create file reader for this file
-  //           const reader = new FileReader();
-
-  //           // Get the actual File object - use the stored original
-  //           const fileToUpload = file.file;
-
-  //           // Make sure we have a valid File object
-  //           if (!fileToUpload || !(fileToUpload instanceof File)) {
-  //             throw new Error('Invalid file object');
-  //           }
-
-  //           // Convert file to array buffer
-  //           const fileArrayBuffer = await new Promise((resolve, reject) => {
-  //             reader.onload = () => resolve(reader.result);
-  //             reader.onerror = () => reject(reader.error);
-  //             reader.readAsArrayBuffer(fileToUpload);
-  //           });
-
-  //           // Convert array buffer to base64
-  //           const base64Data = btoa(
-  //             new Uint8Array(fileArrayBuffer)
-  //               .reduce((data, byte) => data + String.fromCharCode(byte), '')
-  //           );
-
-  //           // Prepare upload data
-  //           const uploadData = {
-  //             fileName: file.name,
-  //             fileType: file.type,
-  //             fileSize: file.size,
-  //             data: base64Data,
-  //             fileId: file.id,
-  //           };
-
-  //           // Send to API endpoint
-  //           const response = await fetch('/api/upload', {
-  //             method: 'POST',
-  //             headers: {
-  //               'Content-Type': 'application/json',
-  //             },
-  //             body: JSON.stringify(uploadData),
-  //           });
-
-  //           // Setup upload progress tracking
-  //           const progressInterval = setInterval(() => {
-  //             const randomIncrement = Math.random() * 10;
-  //             setUploadProgress(prev => {
-  //               const currentProgress = prev[file.id] || 0;
-  //               // Don't go over 90% until we confirm completion
-  //               const newProgress = Math.min(90, currentProgress + randomIncrement);
-  //               return { ...prev, [file.id]: newProgress };
-  //             });
-  //           }, 500);
-
-  //           const result = await response.json();
-  //           clearInterval(progressInterval);
-
-  //           if (!response.ok) {
-  //             throw new Error(result.error || 'Upload failed');
-  //           }
-
-  //           // Set progress to 100%
-  //           updateFileStatus(file.id, FILE_STATUS.COMPLETED, 100);
-  //           await uploadQueueService.updateStatus(file.id, FILE_STATUS.COMPLETED);
-
-  //           // Add to upload history
-  //           await uploadHistoryService.addToHistory({
-  //             fileName: file.name,
-  //             fileSize: file.size,
-  //             status: FILE_STATUS.COMPLETED,
-  //             fileKey: result.key,
-  //             url: result.url
-  //           });
-
-  //           // Update stats
-  //           statsManager.updateSuccessStats(1, file.size);
-
-  //         } catch (error) {
-  //           console.error(`Error uploading file ${file.name}:`, error);
-  //           updateFileStatus(file.id, FILE_STATUS.FAILED, 0, error.message);
-  //           await uploadQueueService.updateStatus(file.id, FILE_STATUS.FAILED, file.retryCount + 1);
-  //           statsManager.updateFailureStats(1);
-  //         }
-  //       })
-  //     );
-
-  //     // Move to next batch
-  //     currentBatch++;
-  //     await uploadBatch();
-  //   };
-
-  //   // Start the first batch
-  //   await uploadBatch();
-
-  //   // Update stats from storage after upload completes
-  //   const updatedStats = statsManager.getStats();
-  //   setStats(updatedStats);
-
-  //   // Refresh upload history
-  //   const history = await uploadHistoryService.getHistory(1, 20);
-  //   setUploadHistory(history.items);
-
-  // }, [selectedFiles, isUploading, uploadConcurrency, updateFileStatus]);
-
-  // Modified uploadFile method for UploaderProvider
+  // Enhanced startUpload function with concurrency and error handling
+  // This function handles the upload process, including chunked uploads and error handling
   const startUpload = useCallback(async () => {
     if (selectedFiles.length === 0 || isUploading) return;
 
@@ -321,6 +171,35 @@ export const UploaderProvider = ({ children }) => {
     // Process files in batches based on concurrency
     let currentBatch = 0;
     const totalBatches = Math.ceil(filesToUpload.length / uploadConcurrency);
+
+    // Function to update stats and history after each file completes
+    const updateFileCompletion = async (file, fileKey, fileUrl) => {
+      // Update local file status
+      updateFileStatus(file.id, FILE_STATUS.COMPLETED, 100);
+
+      // Update DB queue status
+      await uploadQueueService.updateStatus(file.id, FILE_STATUS.COMPLETED);
+
+      // Add to upload history immediately
+      await uploadHistoryService.addToHistory({
+        fileName: file.name,
+        fileSize: file.size,
+        status: FILE_STATUS.COMPLETED,
+        fileKey: fileKey,
+        url: fileUrl
+      });
+
+      // Update stats immediately
+      statsManager.updateSuccessStats(1, file.size);
+
+      // Fetch updated stats to update UI
+      const updatedStats = statsManager.getStats();
+      setStats(updatedStats);
+
+      // Refresh upload history
+      const history = await uploadHistoryService.getHistory(1, 20);
+      setUploadHistory(history.items);
+    };
 
     const uploadBatch = async () => {
       const startIdx = currentBatch * uploadConcurrency;
@@ -383,23 +262,60 @@ export const UploaderProvider = ({ children }) => {
 
             // Upload each chunk
             for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-              // Check if upload was cancelled
+              // Before processing each chunk, check if the upload has been cancelled
+              // First check local state
               const currentFile = selectedFiles.find(f => f.id === file.id);
-              if (currentFile && currentFile.status === FILE_STATUS.CANCELLED) {
-                // Abort the multipart upload
-                await fetch('/api/upload-chunk', {
+              if (currentFile?.status === FILE_STATUS.CANCELLED) {
+                console.log(`Stopping upload of file ${file.name} because it was cancelled`);
+
+                // Abort the multipart upload on the server
+                try {
+                  await fetch('/api/upload-chunk', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      action: 'abort',
+                      fileId: file.id,
+                      uploadId,
+                      fileKey
+                    }),
+                  });
+                } catch (abortError) {
+                  console.error('Error notifying server about cancelled upload:', abortError);
+                }
+
+                return; // Exit the upload process for this file
+              }
+
+              // Additionally check with the server if this upload was cancelled from another session/tab
+              try {
+                const statusResponse = await fetch('/api/upload-chunk', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
                   },
                   body: JSON.stringify({
-                    action: 'abort',
-                    fileId: file.id,
-                    uploadId,
-                    fileKey
+                    action: 'status',
+                    fileId: file.id
                   }),
                 });
-                return;
+
+                if (statusResponse.ok) {
+                  const statusResult = await statusResponse.json();
+                  if (statusResult.cancelled) {
+                    console.log(`Server reports upload of file ${file.name} was cancelled`);
+                    // Update local state if not already cancelled
+                    if (currentFile?.status !== FILE_STATUS.CANCELLED) {
+                      updateFileStatus(file.id, FILE_STATUS.CANCELLED);
+                    }
+                    return; // Exit the upload process for this file
+                  }
+                }
+              } catch (statusError) {
+                console.warn('Error checking upload status:', statusError);
+                // Continue with upload if we can't check status
               }
 
               // Calculate chunk boundaries
@@ -435,10 +351,27 @@ export const UploaderProvider = ({ children }) => {
                 throw new Error(`Failed to upload chunk ${chunkIndex + 1}/${totalChunks}`);
               }
 
+              // Check the response to see if the server reports this upload as cancelled
+              const chunkResult = await chunkResponse.json();
+              if (chunkResult.cancelled) {
+                console.log(`Server cancelled the upload during chunk processing`);
+                if (currentFile?.status !== FILE_STATUS.CANCELLED) {
+                  updateFileStatus(file.id, FILE_STATUS.CANCELLED);
+                }
+                return; // Exit the upload process for this file
+              }
+
               // Update progress
               uploadedChunks++;
               currentProgress = Math.floor((uploadedChunks / totalChunks) * 100);
               updateFileStatus(file.id, FILE_STATUS.UPLOADING, currentProgress);
+            }
+
+            // One final check before completing
+            const finalCheckFile = selectedFiles.find(f => f.id === file.id);
+            if (finalCheckFile?.status === FILE_STATUS.CANCELLED) {
+              console.log(`Upload was cancelled before completion`);
+              return;
             }
 
             // Complete the multipart upload
@@ -465,27 +398,18 @@ export const UploaderProvider = ({ children }) => {
               throw new Error(result.error || 'Failed to complete upload');
             }
 
-            // Set progress to 100%
-            updateFileStatus(file.id, FILE_STATUS.COMPLETED, 100);
-            await uploadQueueService.updateStatus(file.id, FILE_STATUS.COMPLETED);
-
-            // Add to upload history
-            await uploadHistoryService.addToHistory({
-              fileName: file.name,
-              fileSize: file.size,
-              status: FILE_STATUS.COMPLETED,
-              fileKey: result.key,
-              url: result.url
-            });
-
-            // Update stats
-            statsManager.updateSuccessStats(1, file.size);
+            // Update stats, DB, and history immediately for this completed file
+            await updateFileCompletion(file, result.key, result.url);
 
           } catch (error) {
             console.error(`Error uploading file ${file.name}:`, error);
             updateFileStatus(file.id, FILE_STATUS.FAILED, 0, error.message);
             await uploadQueueService.updateStatus(file.id, FILE_STATUS.FAILED, file.retryCount + 1);
             statsManager.updateFailureStats(1);
+
+            // Update stats in the UI for failures too
+            const updatedStats = statsManager.getStats();
+            setStats(updatedStats);
           }
         })
       );
@@ -498,24 +422,34 @@ export const UploaderProvider = ({ children }) => {
     // Start the first batch
     await uploadBatch();
 
-    // Update stats from storage after upload completes
-    const updatedStats = statsManager.getStats();
-    setStats(updatedStats);
+    // Set uploading to false when all batches are done
+    setIsUploading(false);
 
-    // Refresh upload history
-    const history = await uploadHistoryService.getHistory(1, 20);
-    setUploadHistory(history.items);
-
-  }, [selectedFiles, isUploading, uploadConcurrency, updateFileStatus]);
-
+  }, [selectedFiles, isUploading, uploadConcurrency, updateFileStatus, setStats, setUploadHistory]);
   // Also update the cancelUpload method to abort multipart uploads
   const cancelUpload = useCallback(async (fileId) => {
+    // First update the local state to reflect cancellation
     updateFileStatus(fileId, FILE_STATUS.CANCELLED);
     await uploadQueueService.updateStatus(fileId, FILE_STATUS.CANCELLED);
 
-    // We don't need to explicitly abort the upload here
-    // The upload process checks for cancelled status between chunks
+    try {
+      // Actively notify the server to abort the upload
+      await fetch('/api/upload-chunk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'abort',
+          fileId: fileId
+        }),
+      });
 
+      console.log(`Upload cancelled for file ID: ${fileId}`);
+    } catch (error) {
+      console.error('Error cancelling upload:', error);
+      // Even if the server request fails, we still keep the local state as cancelled
+    }
   }, [updateFileStatus]);
 
   // Retry failed uploads
@@ -537,16 +471,40 @@ export const UploaderProvider = ({ children }) => {
 
 
   // Cancel all uploads
-  const cancelAllUploads = useCallback(() => {
+  // Enhanced cancelAllUploads function
+  const cancelAllUploads = useCallback(async () => {
     setIsUploading(false);
 
-    // Update status for each file that's currently uploading
-    selectedFiles.forEach(file => {
-      if (file.status === FILE_STATUS.UPLOADING) {
-        updateFileStatus(file.id, FILE_STATUS.CANCELLED);
-        uploadQueueService.updateStatus(file.id, FILE_STATUS.CANCELLED);
-      }
-    });
+    // Get all files that are currently uploading
+    const uploadingFiles = selectedFiles.filter(file => file.status === FILE_STATUS.UPLOADING);
+
+    if (uploadingFiles.length === 0) {
+      return; // No files to cancel
+    }
+
+    // Update local status for each file
+    for (const file of uploadingFiles) {
+      updateFileStatus(file.id, FILE_STATUS.CANCELLED);
+      await uploadQueueService.updateStatus(file.id, FILE_STATUS.CANCELLED);
+    }
+
+    // Notify server about all cancellations
+    await Promise.allSettled(
+      uploadingFiles.map(file =>
+        fetch('/api/upload-chunk', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'abort',
+            fileId: file.id
+          }),
+        }).catch(error => console.error(`Error cancelling upload for ${file.name}:`, error))
+      )
+    );
+
+    console.log(`Cancelled ${uploadingFiles.length} uploads`);
   }, [selectedFiles, updateFileStatus]);
 
   // Process a folder
