@@ -1,5 +1,12 @@
 // pages/api/upload-chunk.js
-import { S3Client, UploadPartCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand, AbortMultipartUploadCommand } from '@aws-sdk/client-s3';
+import {
+    S3Client,
+    UploadPartCommand,
+    CompleteMultipartUploadCommand,
+    CreateMultipartUploadCommand,
+    AbortMultipartUploadCommand,
+    DeleteObjectCommand
+} from '@aws-sdk/client-s3';
 import { Storage } from '@google-cloud/storage';
 
 // Get environment variables
@@ -44,8 +51,32 @@ export const config = {
 const multipartUploads = {};
 const gcpWriteStreams = {};
 
-// Store cancelled upload file IDs
+// Store cancelled upload file IDs and their file keys
 const cancelledUploads = new Set();
+const fileKeyMap = new Map(); // Maps fileId to fileKey for cleanup purposes
+
+// Helper function to delete a file from cloud storage
+const deleteFileFromCloud = async (fileKey) => {
+    try {
+        if (cloudProvider === 'aws') {
+            const s3Client = getStorageClient();
+            await s3Client.send(new DeleteObjectCommand({
+                Bucket: bucketName,
+                Key: fileKey
+            }));
+            console.log(`Deleted file from AWS S3: ${fileKey}`);
+        } else if (cloudProvider === 'gcp') {
+            const storage = getStorageClient();
+            const bucket = storage.bucket(bucketName);
+            await bucket.file(fileKey).delete();
+            console.log(`Deleted file from GCP Storage: ${fileKey}`);
+        }
+        return true;
+    } catch (error) {
+        console.error(`Error deleting file ${fileKey} from cloud:`, error);
+        return false;
+    }
+};
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
@@ -78,9 +109,12 @@ export default async function handler(req, res) {
         if (action === 'initialize') {
             // If this file was previously cancelled, remove it from cancelled list
             cancelledUploads.delete(fileId);
-            
+
             const generatedFileKey = generateFileKey(fileName);
-            
+
+            // Store the file key mapping for potential cleanup later
+            fileKeyMap.set(fileId, generatedFileKey);
+
             if (cloudProvider === 'aws') {
                 const s3Client = getStorageClient();
                 const command = new CreateMultipartUploadCommand({
@@ -131,7 +165,7 @@ export default async function handler(req, res) {
         // Upload a chunk
         else if (action === 'upload') {
             const buffer = Buffer.from(chunkData, 'base64');
-            
+
             if (cloudProvider === 'aws') {
                 if (!multipartUploads[fileId]) {
                     return res.status(400).json({
@@ -139,7 +173,7 @@ export default async function handler(req, res) {
                         error: 'Upload session not found'
                     });
                 }
-                
+
                 const s3Client = getStorageClient();
                 const partNumber = parseInt(currentChunk) + 1; // S3 parts start from 1
                 const command = new UploadPartCommand({
@@ -150,13 +184,13 @@ export default async function handler(req, res) {
                     Body: buffer
                 });
                 const response = await s3Client.send(command);
-                
+
                 // Store the ETag for this part
                 multipartUploads[fileId].parts.push({
                     PartNumber: partNumber,
                     ETag: response.ETag
                 });
-                
+
                 return res.status(200).json({
                     success: true,
                     partNumber,
@@ -169,7 +203,7 @@ export default async function handler(req, res) {
                         error: 'Upload session not found'
                     });
                 }
-                
+
                 // Write the chunk to the GCP stream
                 await new Promise((resolve, reject) => {
                     gcpWriteStreams[fileId].writeStream.write(buffer, err => {
@@ -177,7 +211,7 @@ export default async function handler(req, res) {
                         resolve();
                     });
                 });
-                
+
                 return res.status(200).json({
                     success: true,
                     chunkReceived: currentChunk,
@@ -193,25 +227,26 @@ export default async function handler(req, res) {
                         error: 'Upload session not found'
                     });
                 }
-                
+
                 const s3Client = getStorageClient();
                 const { parts, fileKey, uploadId } = multipartUploads[fileId];
-                
+
                 // Order parts by part number
                 parts.sort((a, b) => a.PartNumber - b.PartNumber);
-                
+
                 const command = new CompleteMultipartUploadCommand({
                     Bucket: bucketName,
                     Key: fileKey,
                     UploadId: uploadId,
                     MultipartUpload: { Parts: parts }
                 });
-                
+
                 await s3Client.send(command);
-                
+
                 // Clean up
                 delete multipartUploads[fileId];
-                
+                fileKeyMap.delete(fileId); // No longer need this for cleanup
+
                 const fileUrl = getFileUrl(fileKey);
                 return res.status(200).json({
                     success: true,
@@ -225,7 +260,7 @@ export default async function handler(req, res) {
                         error: 'Upload session not found'
                     });
                 }
-                
+
                 // End the write stream
                 await new Promise((resolve, reject) => {
                     gcpWriteStreams[fileId].writeStream.end(err => {
@@ -233,13 +268,14 @@ export default async function handler(req, res) {
                         else resolve();
                     });
                 });
-                
+
                 const fileKey = gcpWriteStreams[fileId].fileKey;
                 const fileUrl = getFileUrl(fileKey);
-                
+
                 // Clean up
                 delete gcpWriteStreams[fileId];
-                
+                fileKeyMap.delete(fileId); // No longer need this for cleanup
+
                 return res.status(200).json({
                     success: true,
                     key: fileKey,
@@ -251,68 +287,98 @@ export default async function handler(req, res) {
         else if (action === 'abort') {
             // Mark this upload as cancelled
             cancelledUploads.add(fileId);
-            
+
+            // Get the file key from the request or from our mapping
+            const targetFileKey = fileKey || fileKeyMap.get(fileId);
+
             if (cloudProvider === 'aws') {
-                if (!multipartUploads[fileId]) {
+                if (!multipartUploads[fileId] && !targetFileKey) {
                     // Still return success if the upload wasn't found
                     return res.status(200).json({
                         success: true,
                         message: 'Upload marked as cancelled'
                     });
                 }
-                
+
                 const s3Client = getStorageClient();
-                const { fileKey, uploadId } = multipartUploads[fileId];
-                
-                const command = new AbortMultipartUploadCommand({
-                    Bucket: bucketName,
-                    Key: fileKey,
-                    UploadId: uploadId
-                });
-                
-                await s3Client.send(command);
-                
+                const uploadDetails = multipartUploads[fileId];
+                const actualFileKey = uploadDetails ? uploadDetails.fileKey : targetFileKey;
+                const actualUploadId = uploadDetails ? uploadDetails.uploadId : uploadId;
+
+                if (actualUploadId) {
+                    try {
+                        // Abort the multipart upload
+                        const command = new AbortMultipartUploadCommand({
+                            Bucket: bucketName,
+                            Key: actualFileKey,
+                            UploadId: actualUploadId
+                        });
+
+                        await s3Client.send(command);
+                    } catch (abortError) {
+                        console.error('Error aborting S3 multipart upload:', abortError);
+                    }
+                }
+
+                if (actualFileKey) {
+                    // Also attempt to delete any existing object with this key
+                    try {
+                        await deleteFileFromCloud(actualFileKey);
+                    } catch (deleteError) {
+                        console.error('Error deleting S3 file:', deleteError);
+                    }
+                }
+
                 // Clean up
-                delete multipartUploads[fileId];
-                
+                if (fileId in multipartUploads) {
+                    delete multipartUploads[fileId];
+                }
+                fileKeyMap.delete(fileId);
+
                 return res.status(200).json({
                     success: true,
-                    message: 'Upload aborted'
+                    message: 'Upload aborted and file cleanup attempted'
                 });
             } else if (cloudProvider === 'gcp') {
-                if (!gcpWriteStreams[fileId]) {
+                if (!gcpWriteStreams[fileId] && !targetFileKey) {
                     // Still return success if the upload wasn't found
                     return res.status(200).json({
                         success: true,
                         message: 'Upload marked as cancelled'
                     });
                 }
-                
-                // Destroy the write stream
-                gcpWriteStreams[fileId].writeStream.destroy();
-                
-                // Delete the incomplete file
-                const storage = getStorageClient();
-                const bucket = storage.bucket(bucketName);
-                const fileKey = gcpWriteStreams[fileId].fileKey;
-                
-                try {
-                    await bucket.file(fileKey).delete();
-                } catch (deleteError) {
-                    console.warn('Error deleting incomplete file:', deleteError);
-                    // Continue even if delete fails
+
+                if (fileId in gcpWriteStreams) {
+                    // Destroy the write stream
+                    gcpWriteStreams[fileId].writeStream.destroy();
                 }
-                
+
+                const actualFileKey = gcpWriteStreams[fileId] ?
+                    gcpWriteStreams[fileId].fileKey :
+                    targetFileKey;
+
+                if (actualFileKey) {
+                    // Delete the incomplete file
+                    try {
+                        await deleteFileFromCloud(actualFileKey);
+                    } catch (deleteError) {
+                        console.error('Error deleting GCP file:', deleteError);
+                    }
+                }
+
                 // Clean up
-                delete gcpWriteStreams[fileId];
-                
+                if (fileId in gcpWriteStreams) {
+                    delete gcpWriteStreams[fileId];
+                }
+                fileKeyMap.delete(fileId);
+
                 return res.status(200).json({
                     success: true,
-                    message: 'Upload aborted'
+                    message: 'Upload aborted and file cleanup attempted'
                 });
             }
         }
-        
+
         return res.status(400).json({
             success: false,
             error: 'Invalid action'
@@ -333,14 +399,14 @@ function generateFileKey(fileName) {
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
-    
+
     // Clean the file name
     const cleanName = fileName.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '-');
-    
+
     // Add unique ID to prevent overwriting
     const uniqueId = require('crypto').randomBytes(4).toString('hex');
-    
-    return `uploads/${year}/${month}/${day}/${uniqueId}-${cleanName}`;
+
+    return `uploads/${year}-${month}-${day}/${uniqueId}-${cleanName}`;
 }
 
 // Get the URL of a file based on provider and bucket
