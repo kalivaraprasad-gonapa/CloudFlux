@@ -9,7 +9,7 @@ const nextConfig = {
   // Configure environment variables
   env: {
     // Cloud provider
-    CLOUD_PROVIDER: process.env.CLOUD_PROVIDER || 'aws',
+    CLOUD_PROVIDER: process.env.CLOUD_PROVIDER || 'gcp',
 
     // AWS S3 variables
     AWS_REGION: process.env.AWS_REGION,
