@@ -4,6 +4,7 @@ const nextConfig = {
     responseLimit: false,
     bodyParser: false,
   },
+  output: 'standalone',
   reactStrictMode: true,
   swcMinify: true,
   // Configure environment variables

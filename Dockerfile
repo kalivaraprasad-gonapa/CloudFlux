@@ -11,6 +11,9 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# Create public directory if it doesn't exist
+RUN mkdir -p public
+
 # Build application
 RUN npm run build
 
@@ -25,11 +28,18 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy only necessary files from build stage
-COPY --from=builder /app/next.config.js ./
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+# Copy necessary files from build stage - with fallbacks for different Next.js configurations
+COPY --from=builder /app/next.config.js ./next.config.js
+
+# Create public directory
+RUN mkdir -p public
+# Copy public directory if it exists (using separate command to avoid failure)
+COPY --from=builder /app/public ./public 2>/dev/null || true
+
+# Standard Next.js output (non-standalone)
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/package.json ./package.json
 
 # Set proper permissions
 RUN chown -R nextjs:nodejs /app
@@ -44,4 +54,4 @@ EXPOSE 3000
 ENV HOSTNAME="0.0.0.0"
 
 # Start the application
-CMD ["node", "server.js"]
+CMD ["npm", "start"]
