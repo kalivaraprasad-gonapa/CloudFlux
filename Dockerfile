@@ -28,18 +28,16 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy necessary files from build stage - with fallbacks for different Next.js configurations
-COPY --from=builder /app/next.config.js ./next.config.js
-
-# Create public directory
+# Create necessary directories
 RUN mkdir -p public
-# Copy public directory if it exists (using separate command to avoid failure)
-COPY --from=builder /app/public ./public 2>/dev/null || true
+RUN mkdir -p .next
 
-# Standard Next.js output (non-standalone)
-COPY --from=builder /app/node_modules ./node_modules
+# Copy necessary files from build stage
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/package-lock.json* ./ || true
+COPY --from=builder /app/next.config.js ./ || true
 COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/node_modules ./node_modules
 
 # Set proper permissions
 RUN chown -R nextjs:nodejs /app
