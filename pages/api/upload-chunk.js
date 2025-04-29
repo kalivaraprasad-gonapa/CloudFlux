@@ -3,27 +3,27 @@ import { S3Client, UploadPartCommand, CompleteMultipartUploadCommand, CreateMult
 import { Storage } from '@google-cloud/storage';
 
 // Get environment variables
-const cloudProvider = process.env.CLOUD_PROVIDER || 'aws';
+const cloudProvider = process.env.NEXT_PUBLIC_CLOUD_PROVIDER || 'aws';
 const bucketName = cloudProvider === 'aws'
-    ? process.env.AWS_S3_BUCKET
-    : process.env.GCP_BUCKET_NAME;
+    ? process.env.NEXT_PUBLIC_AWS_S3_BUCKET
+    : process.env.NEXT_PUBLIC_GCP_BUCKET_NAME;
 
 // Initialize the storage client based on provider
 const getStorageClient = () => {
     if (cloudProvider === 'aws') {
         return new S3Client({
-            region: process.env.AWS_REGION,
+            region: process.env.NEXT_PUBLIC_AWS_REGION,
             credentials: {
-                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+                accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY
             }
         });
     } else if (cloudProvider === 'gcp') {
         return new Storage({
-            projectId: process.env.GCP_PROJECT_ID,
+            projectId: process.env.NEXT_PUBLIC_GCP_PROJECT_ID,
             credentials: {
-                client_email: process.env.GCP_CLIENT_EMAIL,
-                private_key: process.env.GCP_PRIVATE_KEY.replace(/\\n/g, '\n')
+                client_email: process.env.NEXT_PUBLIC_GCP_CLIENT_EMAIL,
+                private_key: process.env.NEXT_PUBLIC_GCP_PRIVATE_KEY.replace(/\\n/g, '\n')
             }
         });
     } else {
@@ -326,7 +326,7 @@ function generateFileKey(fileName) {
 // Get the URL of a file based on provider and bucket
 function getFileUrl(fileKey) {
     if (cloudProvider === 'aws') {
-        return `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
+        return `https://${bucketName}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${fileKey}`;
     } else if (cloudProvider === 'gcp') {
         return `https://storage.googleapis.com/${bucketName}/${fileKey}`;
     }

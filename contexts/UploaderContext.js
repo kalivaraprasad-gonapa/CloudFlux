@@ -53,7 +53,7 @@ export const UploaderProvider = ({ children }) => {
       // Get cloud provider from environment
       if (typeof window !== 'undefined') {
         // Client-side environment variables
-        const provider = process.env.CLOUD_PROVIDER || 'aws';
+        const provider = process.env.NEXT_PUBLIC_CLOUD_PROVIDER || 'aws';
         setCloudProvider(provider);
       }
     };

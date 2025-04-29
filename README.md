@@ -46,19 +46,19 @@ CloudFlux is a powerful, cloud-agnostic file uploader built with Next.js that su
 3. Set up environment variables by creating a `.env.local` file:
    ```
    # Common
-   CLOUD_PROVIDER=aws  # or 'gcp'
+   NEXT_PUBLIC_CLOUD_PROVIDER=aws  # or 'gcp'
    
    # AWS Configuration
-   AWS_ACCESS_KEY_ID=your_access_key_id
-   AWS_SECRET_ACCESS_KEY=your_secret_access_key
-   AWS_REGION=your_region
-   AWS_S3_BUCKET=your_bucket_name
+   NEXT_PUBLIC_AWS_ACCESS_KEY_ID=your_access_key_id
+   NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY=your_secret_access_key
+   NEXT_PUBLIC_AWS_REGION=your_region
+   NEXT_PUBLIC_AWS_S3_BUCKET=your_bucket_name
    
    # Google Cloud Configuration
-   GCP_PROJECT_ID=your_project_id
-   GCP_CLIENT_EMAIL=your_client_email
-   GCP_PRIVATE_KEY=your_private_key
-   GCP_BUCKET_NAME=your_bucket_name
+   NEXT_PUBLIC_GCP_PROJECT_ID=your_project_id
+   NEXT_PUBLIC_GCP_CLIENT_EMAIL=your_client_email
+   NEXT_PUBLIC_GCP_PRIVATE_KEY=your_private_key
+   NEXT_PUBLIC_GCP_BUCKET_NAME=your_bucket_name
    ```
 
 4. Run the development server:

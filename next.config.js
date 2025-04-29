@@ -9,15 +9,15 @@ const nextConfig = {
   // Configure environment variables
   env: {
     // Cloud provider
-    CLOUD_PROVIDER: process.env.CLOUD_PROVIDER || 'gcp',
+    NEXT_PUBLIC_CLOUD_PROVIDER: process.env.NEXT_PUBLIC_CLOUD_PROVIDER || 'gcp',
 
     // AWS S3 variables
-    AWS_REGION: process.env.AWS_REGION,
-    AWS_S3_BUCKET: process.env.AWS_S3_BUCKET,
+    NEXT_PUBLIC_AWS_REGION: process.env.NEXT_PUBLIC_AWS_REGION,
+    NEXT_PUBLIC_AWS_S3_BUCKET: process.env.NEXT_PUBLIC_AWS_S3_BUCKET,
 
     // Google Cloud Storage variables
-    GCP_PROJECT_ID: process.env.GCP_PROJECT_ID,
-    GCP_BUCKET_NAME: process.env.GCP_BUCKET_NAME,
+    NEXT_PUBLIC_GCP_PROJECT_ID: process.env.NEXT_PUBLIC_GCP_PROJECT_ID,
+    NEXT_PUBLIC_GCP_BUCKET_NAME: process.env.NEXT_PUBLIC_GCP_BUCKET_NAME,
   },
   // API configuration for larger payloads
   experimental: {
