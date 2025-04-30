@@ -173,7 +173,9 @@ export const UploaderProvider = ({ children }) => {
 
       // Calculate average upload speed in Mbps
       const avgUploadTime = totalUploadTime / iterations; // ms
-      const uploadSpeedMbps = (testSizeKB * 8) / (avgUploadTime / 1000); // Mbps
+      // (KB → bytes → bits → Mbit)  :  KB * 1024 * 8 / 1_048_576  ≡  KB * 8 / 1024
+      const uploadSpeedMbps =
+        (testSizeKB * 8) / 1024 / (avgUploadTime / 1000); // Mbps
 
       // Log test results
       console.log("Network test results:", {
