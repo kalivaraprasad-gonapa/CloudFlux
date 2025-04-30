@@ -16,7 +16,7 @@ const UploaderPage = () => {
   useEffect(() => {
     const checkAuth = () => {
       const isAuthenticated = sessionManager.checkSession();
-      
+
       if (!isAuthenticated) {
         // Redirect to home page for authentication
         router.push('/');
@@ -25,7 +25,7 @@ const UploaderPage = () => {
         setIsLoading(false);
       }
     };
-    
+
     checkAuth();
   }, [router]);
 
@@ -80,7 +80,7 @@ const UploaderPage = () => {
   return (
     <>
       <Head>
-        <title>Cloud File Uploader</title>
+        <title>CloudFlux</title>
         <meta name="description" content="Upload files directly to cloud storage" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
@@ -92,7 +92,7 @@ const UploaderPage = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <h1 className="text-xl font-bold text-primary dark:text-primary-light">
-                  Cloud File Uploader
+                  CloudFlux
                 </h1>
                 <div className="ml-4 flex items-center px-3 py-1 bg-secondary dark:bg-gray-700 rounded-full">
                   <span className="text-primary dark:text-primary-light mr-2">
@@ -103,7 +103,7 @@ const UploaderPage = () => {
                   </span>
                 </div>
               </div>
-              
+
               <button
                 type="button"
                 onClick={handleLogout}
@@ -122,7 +122,7 @@ const UploaderPage = () => {
             <section>
               <UploadStats />
             </section>
-            
+
             {/* Drop Zone */}
             <section>
               <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
@@ -130,7 +130,7 @@ const UploaderPage = () => {
               </h2>
               <DropZone />
             </section>
-            
+
             {/* File List */}
             <section>
               <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
@@ -145,7 +145,7 @@ const UploaderPage = () => {
         <footer className="bg-white dark:bg-gray-800 shadow mt-auto">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="text-center text-sm text-gray-500 dark:text-gray-400">
-              Cloud File Uploader &copy; {new Date().getFullYear()}
+              CloudFlux &copy; {new Date().getFullYear()}
             </div>
           </div>
         </footer>
