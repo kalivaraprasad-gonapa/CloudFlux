@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
-import Head from 'next/head';
-import AccessForm from '../components/AccessForm';
-import { sessionManager } from '../lib/db';
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import Head from "next/head";
+import AccessForm from "../components/AccessForm";
+import { sessionManager } from "../lib/db";
 
 const Home = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -12,16 +12,16 @@ const Home = () => {
   useEffect(() => {
     const checkAuth = () => {
       const isAuthenticated = sessionManager.checkSession();
-      
+
       if (isAuthenticated) {
         // Redirect to uploader page
-        router.push('/uploader');
+        router.push("/uploader");
       } else {
         // Show the access form
         setIsLoading(false);
       }
     };
-    
+
     checkAuth();
   }, [router]);
 
