@@ -10,13 +10,14 @@ export const config = {
 };
 
 /**
- * API endpoint for network speed testing
- * Used to determine optimal upload settings based on network conditions
+ * Handles POST requests for network speed testing by measuring the size of uploaded data and returning upload statistics.
  *
- * This is a simple endpoint that:
- * 1. Accepts a test payload (file/blob of data)
- * 2. Times how long it takes to receive it
- * 3. Returns statistics about the upload
+ * Accepts a payload via POST, validates its presence, introduces a brief artificial delay to simulate processing, and responds with the received size in bytes and megabytes along with a timestamp.
+ *
+ * @returns {void}
+ *
+ * @throws {Error} If an unexpected error occurs during request processing, responds with a 500 status and an error message.
+ * @remark Responds with status 405 for non-POST methods and 400 if no content is provided.
  */
 export default async function handler(req, res) {
   if (req.method !== "POST") {

@@ -936,7 +936,15 @@ export const UploaderProvider = ({ children }) => {
       try {
         const files = [];
 
-        // Recursive function to process directories
+        /**
+         * Recursively traverses a directory handle and collects all files, preserving their relative paths.
+         *
+         * @param {FileSystemDirectoryHandle} dirHandle - The directory handle to process.
+         * @param {string} [path=""] - The current relative path within the directory tree.
+         *
+         * @remark
+         * Collected files are added to the `files` array with their relative paths encoded in the file name.
+         */
         async function processDirectoryEntry(dirHandle, path = "") {
           for await (const entry of dirHandle.values()) {
             const entryPath = path ? `${path}/${entry.name}` : entry.name;

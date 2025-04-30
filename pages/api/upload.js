@@ -10,6 +10,13 @@ export const config = {
   },
 };
 
+/**
+ * Handles large file uploads via POST requests, validating input and uploading files to cloud storage.
+ *
+ * Accepts a base64-encoded file in the request body, decodes it, and uploads it to a cloud storage provider. Responds with file metadata and storage details on success, or an error message on failure.
+ *
+ * @remark Only POST requests are supported; other methods receive a 405 response. The request body must include `fileName`, `fileType`, and `data` fields. Responds with HTTP 400 if required fields are missing, and HTTP 500 for upload or server errors.
+ */
 export default async function handler(req, res) {
   // Only allow POST method
   if (req.method !== "POST") {
