@@ -173,9 +173,7 @@ export const UploaderProvider = ({ children }) => {
 
       // Calculate average upload speed in Mbps
       const avgUploadTime = totalUploadTime / iterations; // ms
-      // (KB → bytes → bits → Mbit)  :  KB * 1024 * 8 / 1_048_576  ≡  KB * 8 / 1024
-      const uploadSpeedMbps =
-        (testSizeKB * 8) / 1024 / (avgUploadTime / 1000); // Mbps
+      const uploadSpeedMbps = (testSizeKB * 8) / (avgUploadTime / 1000); // Mbps
 
       // Log test results
       console.log("Network test results:", {
@@ -938,7 +936,15 @@ export const UploaderProvider = ({ children }) => {
       try {
         const files = [];
 
-        // Recursive function to process directories
+        /**
+         * Recursively traverses a directory handle and collects all files, preserving their relative paths.
+         *
+         * @param {FileSystemDirectoryHandle} dirHandle - The directory handle to process.
+         * @param {string} [path=""] - The current relative path within the directory tree.
+         *
+         * @remark
+         * Collected files are added to the `files` array with their relative paths encoded in the file name.
+         */
         async function processDirectoryEntry(dirHandle, path = "") {
           for await (const entry of dirHandle.values()) {
             const entryPath = path ? `${path}/${entry.name}` : entry.name;

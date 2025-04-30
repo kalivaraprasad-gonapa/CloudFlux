@@ -84,6 +84,21 @@ const deleteFileFromCloud = async (fileKey) => {
   }
 };
 
+/**
+ * Handles chunked file uploads to AWS S3 or Google Cloud Storage, supporting multipart upload initialization, chunk transfer, completion, status checks, and abort operations.
+ *
+ * Accepts POST requests with an `action` parameter to manage the upload lifecycle:
+ * - `"initialize"`: Starts a new upload session and returns identifiers.
+ * - `"status"`: Returns whether the upload has been cancelled.
+ * - `"upload"`: Receives and stores a file chunk.
+ * - `"complete"`: Finalizes the upload and returns the file URL.
+ * - `"abort"`: Cancels the upload and attempts cleanup.
+ *
+ * @remark
+ * Upload sessions and state are tracked in-memory and are not persistent across server restarts.
+ *
+ * @returns {void} Responds with JSON indicating success, error details, or upload status.
+ */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Method not allowed" });
@@ -402,7 +417,14 @@ export default async function handler(req, res) {
   }
 }
 
-// Generate a unique key for the file
+/**
+ * Generates a unique, date-based storage key for a file.
+ *
+ * The key includes a date-stamped folder, a random hex identifier, and a sanitized file name to prevent collisions and ensure safe storage paths.
+ *
+ * @param {string} fileName - The original name of the file to be stored.
+ * @returns {string} A unique file key suitable for use in cloud storage.
+ */
 function generateFileKey(fileName) {
   // Create folder structure based on date
   const now = new Date();
@@ -419,7 +441,12 @@ function generateFileKey(fileName) {
   return `uploads/${year}-${month}-${day}/${uniqueId}-${cleanName}`;
 }
 
-// Get the URL of a file based on provider and bucket
+/**
+ * Returns the public URL for a file stored in the configured cloud provider's bucket.
+ *
+ * @param {string} fileKey - The unique key or path of the file in the bucket.
+ * @returns {string|null} The public URL of the file, or {@code null} if the provider is unsupported.
+ */
 function getFileUrl(fileKey) {
   if (cloudProvider === "aws") {
     return `https://${bucketName}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${fileKey}`;

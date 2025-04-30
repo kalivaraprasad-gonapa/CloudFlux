@@ -18,6 +18,13 @@ const generateToken = () => {
   return token;
 };
 
+/**
+ * Handles authentication requests by validating a provided secret key and issuing a session token.
+ *
+ * Accepts only POST requests with a `secretKey` in the request body. If the provided key matches the expected value from the environment, returns a generated token; otherwise, responds with an appropriate error status and message.
+ *
+ * @remark Responds with status 405 for non-POST methods, 400 if the secret key is missing, 500 if the server is misconfigured, and 401 if authentication fails.
+ */
 export default function handler(req, res) {
   // Only allow POST method
   if (req.method !== "POST") {
