@@ -4,6 +4,7 @@
 
 CloudFlux is a powerful, cloud-agnostic file uploader built with Next.js that supports both AWS S3 and Google Cloud Storage. It features chunked file uploads to handle files of virtually any size, a modern React UI with real-time progress tracking, and a persistent queue system for reliability.
 
+
 ## ✨ Features
 
 - **Cloud Agnostic** - Seamlessly switch between AWS S3 and Google Cloud Storage
